@@ -20,19 +20,20 @@ app.use(
 );
 
 app.use(express.json());
-app.set("trust proxy", 1); // Render + HTTPS için ŞART
+app.set("trust proxy", true); // Render + HTTPS için ŞART
 
 app.use(
   session({
     name: "garson.sid",
-    secret: process.env.SESSION_SECRET,
+    secret: process.env.SESSION_SECRET || "dev-secret",
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
       httpOnly: true,
-      secure: true, // 🔥 HTTPS olduğu için TRUE
-      sameSite: "none", // 🔥 CROSS-DOMAIN için ZORUNLU
-      maxAge: 1000 * 60 * 10, // 10 dk
+      secure: false, // ⛔ şimdilik FALSE
+      sameSite: "lax", // ⛔ none kullanma
+      maxAge: 1000 * 60 * 10,
     },
   })
 );
