@@ -4,12 +4,11 @@ const {
   callWaiterFromWeb,
 } = require("../controllers/webWaiter.controller");
 
+const rateLimit = require("../middlewares/webWaiterRateLimit");
+
 const router = express.Router();
 
-/* 🌐 Web → Wi-Fi kontrol */
 router.get("/check-wifi", checkCafeWifi);
-
-/* 🌐 Web → Garson çağır */
-router.post("/call", callWaiterFromWeb);
+router.post("/call", rateLimit, callWaiterFromWeb);
 
 module.exports = router;

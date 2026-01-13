@@ -1,51 +1,52 @@
 const pool = require("../db");
+const getClientIp = require("../utils/getClientIp");
 const { sendPushToTokens } = require("../utils/push");
 
-/* 1️⃣ Wi-Fi kontrol */
+/* 🔐 Wi-Fi kontrol */
 exports.checkCafeWifi = async (req, res) => {
-  const clientIp =
-    req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
+  const clientIp = getClientIp(req);
+  req.clientIp = clientIp;
 
-  console.log("🌐 CLIENT IP:", clientIp);
+  const [[cafe]] = await pool.execute("SELECT wifi_ip FROM cafes WHERE id = 1");
 
-  const [rows] = await pool.execute(`SELECT wifi_ip FROM cafes WHERE id = 1`);
+  const allowed = clientIp === cafe.wifi_ip;
 
-  const cafeIp = rows[0]?.wifi_ip;
+  if (allowed) {
+    req.session.wifi_ok = true;
+    req.session.ip = clientIp;
+  }
 
-  res.json({
-    allowed: clientIp === cafeIp,
-  });
+  res.json({ allowed });
 };
 
-/* 2️⃣ Web’den garson çağır */
+/* 🔔 Garson çağır */
 exports.callWaiterFromWeb = async (req, res) => {
-  const { message } = req.body;
+  const clientIp = getClientIp(req);
 
-  if (!message || message.trim().length < 3) {
+  if (!req.session.wifi_ok || req.session.ip !== clientIp) {
+    return res.status(403).json({
+      error: "Sadece kafe Wi-Fi’ından çağrı yapabilirsiniz",
+    });
+  }
+
+  const { message } = req.body;
+  if (!message || message.length < 3) {
     return res.status(400).json({ error: "Mesaj gerekli" });
   }
 
-  // ⚠️ Cafe ID burada sabit / env / config olabilir
   const CAFE_ID = 1;
 
-  // çağrı kaydı (opsiyonel ama tavsiye)
   await pool.execute(
-    `
-    INSERT INTO calls (cafe_id, table_id, type, status, note)
-    VALUES (?, NULL, 'customer', 'pending', ?)
-    `,
+    `INSERT INTO calls (cafe_id, type, status, note)
+     VALUES (?, 'customer', 'pending', ?)`,
     [CAFE_ID, message]
   );
 
-  // garson + admin tokenları
   const [rows] = await pool.execute(
-    `
-    SELECT push_token
-    FROM users
-    WHERE cafe_id = ?
-      AND role IN ('admin', 'garson')
-      AND push_token IS NOT NULL
-    `,
+    `SELECT push_token FROM users
+     WHERE cafe_id = ?
+     AND role IN ('admin','garson')
+     AND push_token IS NOT NULL`,
     [CAFE_ID]
   );
 
@@ -55,9 +56,7 @@ exports.callWaiterFromWeb = async (req, res) => {
     await sendPushToTokens(tokens, {
       title: "📣 Garson Çağrısı",
       body: message,
-      data: {
-        type: "WEB_CUSTOMER_CALL",
-      },
+      data: { type: "WEB_CUSTOMER_CALL" },
     });
   }
 
