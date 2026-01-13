@@ -3,5 +3,14 @@ module.exports = function getClientIp(req) {
   if (forwarded) {
     return forwarded.split(",")[0].trim();
   }
-  return req.socket.remoteAddress;
+
+  if (req.headers["x-real-ip"]) {
+    return req.headers["x-real-ip"];
+  }
+
+  if (req.headers["cf-connecting-ip"]) {
+    return req.headers["cf-connecting-ip"];
+  }
+
+  return req.ip || req.socket.remoteAddress;
 };
