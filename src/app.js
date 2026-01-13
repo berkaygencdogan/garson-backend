@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const session = require("express-session");
 
 const meRoutes = require("./routes/me.routes");
 const ordersRoutes = require("./routes/orders.routes");
@@ -11,9 +12,33 @@ const webWaiterRoutes = require("./routes/webWaiter.routes");
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "https://coffeeinnterrace.com",
+      "https://test.coffeeinnterrace.com",
+    ],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
-app.set("trust proxy", true);
+app.set("trust proxy", 1); // Render + HTTPS için ŞART
+
+app.use(
+  session({
+    name: "garson.sid",
+    secret: process.env.SESSION_SECRET || "dev-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: true, // Render HTTPS → true
+      sameSite: "none", // cross-origin fetch için ŞART
+      maxAge: 5 * 60 * 1000,
+    },
+  })
+);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/me", meRoutes);

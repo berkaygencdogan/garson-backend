@@ -7,6 +7,8 @@ exports.checkCafeWifi = async (req, res) => {
   const clientIp = getClientIp(req);
   req.clientIp = clientIp;
 
+  console.log("req ip", req.clientIp);
+
   const [[cafe]] = await pool.execute("SELECT wifi_ip FROM cafes WHERE id = 1");
 
   const allowed = clientIp === cafe.wifi_ip;
@@ -22,6 +24,11 @@ exports.checkCafeWifi = async (req, res) => {
 /* 🔔 Garson çağır */
 exports.callWaiterFromWeb = async (req, res) => {
   const clientIp = getClientIp(req);
+  if (!req.session) {
+    return res.status(500).json({
+      error: "Session sistemi aktif değil",
+    });
+  }
 
   if (!req.session.wifi_ok || req.session.ip !== clientIp) {
     return res.status(403).json({

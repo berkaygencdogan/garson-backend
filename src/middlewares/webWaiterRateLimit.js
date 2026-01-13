@@ -1,7 +1,9 @@
+const getClientIp = require("../utils/getClientIp");
+
 const rateMap = new Map();
 
 module.exports = function webWaiterRateLimit(req, res, next) {
-  const ip = req.clientIp;
+  const ip = getClientIp(req); // 🔥 BURASI KRİTİK
   const now = Date.now();
 
   const last = rateMap.get(ip) || 0;
