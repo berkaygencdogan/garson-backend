@@ -30,9 +30,9 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true, // 🔴 HTTPS
-      sameSite: "none", // 🔴 CROSS-DOMAIN ŞART
-      maxAge: 30 * 60 * 1000,
+      secure: true, // 🔥 HTTPS olduğu için TRUE
+      sameSite: "none", // 🔥 CROSS-DOMAIN için ZORUNLU
+      maxAge: 1000 * 60 * 10, // 10 dk
     },
   })
 );

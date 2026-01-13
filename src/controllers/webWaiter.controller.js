@@ -4,6 +4,8 @@ const { sendPushToTokens } = require("../utils/push");
 
 /* 🔐 Wi-Fi kontrol */
 exports.checkCafeWifi = async (req, res) => {
+  console.log("CHECK SESSION ID:", req.sessionID);
+  console.log("CHECK SESSION:", req.session);
   const clientIp = getClientIp(req);
   req.clientIp = clientIp;
 
@@ -23,6 +25,8 @@ exports.checkCafeWifi = async (req, res) => {
 
 /* 🔔 Garson çağır */
 exports.callWaiterFromWeb = async (req, res) => {
+  console.log("WEB CALL SESSION ID:", req.sessionID);
+  console.log("WEB CALL SESSION:", req.session);
   const clientIp = getClientIp(req);
   if (!req.session) {
     return res.status(500).json({
