@@ -14,10 +14,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: [
-      "https://coffeeinnterrace.com",
-      "https://test.coffeeinnterrace.com",
-    ],
+    origin: "https://test.coffeeinnterrace.com",
     credentials: true,
   })
 );
@@ -28,14 +25,14 @@ app.set("trust proxy", 1); // Render + HTTPS için ŞART
 app.use(
   session({
     name: "garson.sid",
-    secret: process.env.SESSION_SECRET || "dev-secret",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true, // Render HTTPS → true
-      sameSite: "none", // cross-origin fetch için ŞART
-      maxAge: 5 * 60 * 1000,
+      secure: true, // 🔴 HTTPS
+      sameSite: "none", // 🔴 CROSS-DOMAIN ŞART
+      maxAge: 30 * 60 * 1000,
     },
   })
 );
