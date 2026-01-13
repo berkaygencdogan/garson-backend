@@ -2,18 +2,16 @@ const pool = require("../db");
 const getClientIp = require("../utils/getClientIp");
 const { sendPushToTokens } = require("../utils/push");
 
-/* 🔐 Wi-Fi kontrol */
 exports.checkCafeWifi = async (req, res) => {
   console.log("CHECK SESSION ID:", req.sessionID);
-  console.log("CHECK SESSION:", req.session);
+
   const clientIp = getClientIp(req);
-  req.clientIp = clientIp;
-
-  console.log("req ip", req.clientIp);
-
   const [[cafe]] = await pool.execute("SELECT wifi_ip FROM cafes WHERE id = 1");
 
-  const allowed = clientIp === cafe.wifi_ip;
+  console.log("DB wifi_ip:", JSON.stringify(cafe.wifi_ip));
+  console.log("CLIENT ip :", JSON.stringify(clientIp));
+
+  const allowed = clientIp.trim() === String(cafe.wifi_ip).trim();
 
   if (allowed) {
     req.session.wifi_ok = true;
