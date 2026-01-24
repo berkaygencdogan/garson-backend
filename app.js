@@ -81,26 +81,31 @@ const sendPushToTokens = async (tokens, message) => {
 
 app.post("/auth", async (req, res) => {
   const { username } = req.body;
-  if (!username) return res.status(400).json({ error: "username zorunlu" });
+  if (!username) {
+    return res.status(400).json({ error: "username zorunlu" });
+  }
 
   const [rows] = await pool.execute(
     "SELECT id FROM users WHERE username = ? LIMIT 1",
     [username],
   );
+
+  // ✅ USER VARSA → DB ID DÖN
   if (rows.length) {
     return res.json({
-      userId: uuidv4(),
+      userId: rows[0].id, // 🔥 ÖNEMLİ
       type: "login",
     });
   }
 
+  // ✅ USER YOKSA → OLUŞTUR → DB ID DÖN
   const [result] = await pool.execute(
     "INSERT INTO users (username) VALUES (?)",
     [username],
   );
 
   res.json({
-    userId: result.insertId,
+    userId: result.insertId, // 🔥 ÖNEMLİ
     type: "register",
   });
 });
