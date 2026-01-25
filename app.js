@@ -2,43 +2,28 @@ require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
-const session = require("express-session");
 const { v4: uuidv4 } = require("uuid");
-
-/* Node < 18 için fetch */
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
-
-/* ================= CONFIG ================= */
-
-// 🔒 KAFE WIFI IP (MANUEL GİR)
-const IP_ADDRESS = "31.223.98.208"; // <-- BURAYA KAFE DIŞ IP YAZ
 
 const PORT = process.env.PORT || 3000;
 
 /* ================= APP ================= */
 
 const app = express();
+app.set("trust proxy", true);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-/* ================= SESSION (WEB) ================= */
+app.get("/", (req, res) => {
+  res.send("API RUNNING");
+});
 
-app.use(
-  session({
-    name: "coffee-session",
-    secret: process.env.SESSION_SECRET || "coffee_secret",
-    resave: false,
-    saveUninitialized: true,
-    cookie: {
-      secure: false, // HTTPS varsa true
-      httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 2,
-    },
-  }),
-);
-
-/* ================= DB ================= */
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    time: new Date().toISOString(),
+  });
+});
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -48,12 +33,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
-/* ================= UTILS ================= */
-
-const getClientIp = (req) => {
-  const fwd = req.headers["x-forwarded-for"];
-  return fwd ? fwd.split(",")[0].trim() : req.socket.remoteAddress;
-};
+/* ================= PUSH ================= */
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -79,6 +59,10 @@ const sendPushToTokens = async (tokens, message) => {
   }
 };
 
+/* ================= HEALTH ================= */
+
+/* ================= AUTH ================= */
+
 app.post("/auth", async (req, res) => {
   const { username } = req.body;
   if (!username) {
@@ -90,95 +74,58 @@ app.post("/auth", async (req, res) => {
     [username],
   );
 
-  // ✅ USER VARSA → DB ID DÖN
   if (rows.length) {
     return res.json({
-      userId: rows[0].id, // 🔥 ÖNEMLİ
+      userId: rows[0].id,
       type: "login",
     });
   }
 
-  // ✅ USER YOKSA → OLUŞTUR → DB ID DÖN
   const [result] = await pool.execute(
     "INSERT INTO users (username) VALUES (?)",
     [username],
   );
 
   res.json({
-    userId: result.insertId, // 🔥 ÖNEMLİ
+    userId: result.insertId,
     type: "register",
   });
 });
 
-/* =================================================
-   WIFI KONTROL (WEB / MÜŞTERİ)
-================================================= */
-
-app.get("/check-cafe-wifi", (req, res) => {
-  const clientIp = getClientIp(req);
-  const allowed = clientIp === IP_ADDRESS;
-
-  if (allowed) {
-    req.session.wifi_ok = true;
-    req.session.ip = clientIp;
-  }
-
-  res.json({ allowed, clientIp });
-});
-
-/* =================================================
-   MÜŞTERİ → GARSON (PENDING)
-================================================= */
+/* ================= PUSH REGISTER ================= */
 
 app.post("/push/register", async (req, res) => {
   const { token } = req.body;
-
   if (!token) {
     return res.status(400).json({ error: "token gerekli" });
   }
 
-  try {
-    await pool.execute(
-      `
-      INSERT INTO push_tokens (token)
-      VALUES (?)
-      ON DUPLICATE KEY UPDATE token = token
-      `,
-      [token],
-    );
+  await pool.execute(
+    `
+    INSERT INTO push_tokens (token)
+    VALUES (?)
+    ON DUPLICATE KEY UPDATE token = token
+    `,
+    [token],
+  );
 
-    console.log("📲 PUSH TOKEN KAYDEDİLDİ:", token);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("PUSH REGISTER ERROR:", err.message);
-    res.status(500).json({ error: "push token kaydedilemedi" });
-  }
+  console.log("📲 PUSH TOKEN KAYDEDİLDİ:", token);
+  res.json({ success: true });
 });
 
+/* ================= WEB → GARSON ================= */
+
 app.post("/call-waiter-web", async (req, res) => {
-  const clientIp = getClientIp(req);
-
-  // 🔒 Wi-Fi kontrolü
-  if (!req.session?.wifi_ok || req.session.ip !== clientIp) {
-    return res.status(403).json({
-      error: "Sadece kafe Wi-Fi’ından çağrı yapabilirsiniz",
-    });
-  }
-
   const { note } = req.body;
 
-  // 🔴 AKTİF BEKLEYEN ÇAĞRI VAR MI?
   const [existing] = await pool.execute(
     `
     SELECT id
     FROM calls
     WHERE status = 'pending'
       AND type = 'waiter'
-      AND ip_address = ?
     LIMIT 1
     `,
-    [clientIp],
   );
 
   if (existing.length) {
@@ -187,16 +134,14 @@ app.post("/call-waiter-web", async (req, res) => {
     });
   }
 
-  // ✅ YENİ ÇAĞRI OLUŞTUR
   await pool.execute(
     `
-    INSERT INTO calls (type, status, note, ip_address)
-    VALUES ('waiter', 'pending', ?, ?)
+    INSERT INTO calls (type, status, note)
+    VALUES ('waiter', 'pending', ?)
     `,
-    [note || null, clientIp],
+    [note || null],
   );
 
-  // 🔔 PUSH GÖNDER (opsiyonel ama sen istiyorsun)
   const [rows] = await pool.execute(`SELECT token FROM push_tokens`);
 
   await sendPushToTokens(
@@ -211,13 +156,13 @@ app.post("/call-waiter-web", async (req, res) => {
   res.json({ success: true });
 });
 
-/* =================================================
-   GARSON DASHBOARD
-================================================= */
+/* ================= GARSON DASHBOARD ================= */
 
 app.get("/garson/dashboard", async (req, res) => {
   const garsonId = Number(req.headers["x-user-id"]);
-  if (!garsonId) return res.status(400).json({ error: "x-user-id gerekli" });
+  if (!garsonId) {
+    return res.status(400).json({ error: "x-user-id gerekli" });
+  }
 
   const [pending] = await pool.execute(
     `
@@ -242,37 +187,15 @@ app.get("/garson/dashboard", async (req, res) => {
   res.json({ pending, accepted });
 });
 
-app.post("/kitchen/call-waiter", async (req, res) => {
-  console.log("🍳 KITCHEN CALL");
-
-  try {
-    const [rows] = await pool.execute(`
-      SELECT token FROM push_tokens
-    `);
-
-    const tokens = rows.map((r) => r.token);
-
-    if (tokens.length) {
-      await sendPushToTokens(tokens, {
-        title: "📣 Garson Çağrısı",
-        body: "Mutfak garson çağırıyor",
-        data: { type: "KITCHEN_CALL" },
-      });
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("KITCHEN CALL ERROR:", err);
-    res.status(500).json({ error: "Mutfak çağrısı gönderilemedi" });
-  }
-});
+/* ================= GARSON ACCEPT ================= */
 
 app.post("/garson/accept/:id", async (req, res) => {
   const callId = Number(req.params.id);
-  console.log("Accepting call ID:", req.headers, callId);
   const garsonId = Number(req.headers["x-user-id"]);
 
-  if (!garsonId) return res.status(400).json({ error: "x-user-id gerekli" });
+  if (!garsonId) {
+    return res.status(400).json({ error: "x-user-id gerekli" });
+  }
 
   const [result] = await pool.execute(
     `
@@ -295,8 +218,40 @@ app.post("/garson/accept/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ================= KITCHEN → GARSON ================= */
+
+app.post("/kitchen/call-waiter", async (req, res) => {
+  const [rows] = await pool.execute(`SELECT token FROM push_tokens`);
+
+  await sendPushToTokens(
+    rows.map((r) => r.token),
+    {
+      title: "📣 Garson Çağrısı",
+      body: "Mutfak garson çağırıyor",
+      data: { type: "KITCHEN_CALL" },
+    },
+  );
+
+  res.json({ success: true });
+});
+
 /* ================= START ================= */
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log("🚀 Server running on port", PORT);
 });
+
+const KEEP_ALIVE_URL =
+  process.env.KEEP_ALIVE_URL || "http://127.0.0.1:3000/health";
+
+setInterval(
+  async () => {
+    try {
+      const res = await fetch(KEEP_ALIVE_URL);
+      console.log("🔄 Keep-alive ping:", res.status);
+    } catch (err) {
+      console.error("⚠️ Keep-alive error:", err.message);
+    }
+  },
+  5 * 60 * 1000,
+); // 5 dakika
